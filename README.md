@@ -25,7 +25,7 @@ The app is one container listening on port 8080. Whatever you run it on, it need
   `admins.json` (admin accounts and authenticator secrets). Without it, both reset on every restart.
 - **No caching** of responses by any CDN or proxy, and cookies passed through to the app.
 - **Outbound HTTPS** to your LLM provider and to the AI Guard API host.
-- **A strong `ADMIN_PASSWORD`.** The default in `.env.example` is a placeholder.
+- **A strong `ADMIN_PASSWORD`.** The admin page stays disabled while it is still the `changeme` placeholder.
 
 All settings can be seeded from environment variables (`.env.example` lists them) and changed later on `/admin`.
 

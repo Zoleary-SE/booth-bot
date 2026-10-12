@@ -1,4 +1,5 @@
 import html
+import re
 import time
 import uuid
 from collections import defaultdict, deque
@@ -6,7 +7,6 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import auth
@@ -19,14 +19,27 @@ import themes
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="Booth Bot", docs_url=None, redoc_url=None)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
 _admin = auth.require_admin
 
 
+# The pages are self-contained (inline script and style, Google Fonts); nothing else may load, frame or receive data.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+    "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+}
+# Session ids are minted here as UUIDs; anything else from a client is replaced (they end up in dict keys and HTTP headers).
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9-]{8,64}")
+
+
 @app.middleware("http")
-async def no_store_admin(request: Request, call_next):
-    # Nothing behind the login may sit in a CDN or browser cache.
+async def response_headers(request: Request, call_next):
     resp = await call_next(request)
+    resp.headers.update(SECURITY_HEADERS)
+    # Nothing behind the login may sit in a CDN or browser cache.
     if request.url.path.startswith(("/admin", "/api/admin")):
         resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -83,8 +96,7 @@ async def admin_page(request: Request):
 
 @app.get("/health")
 async def health():
-    cfg = config.get()
-    return {"ok": True, "guard_enabled": cfg["aiguard"]["enabled"], "llm_enabled": cfg["llm"].get("enabled", True), "model": cfg["llm"]["model"]}
+    return {"ok": True}
 
 
 # ---------- chat ----------
@@ -115,6 +127,8 @@ async def bootstrap():
 @app.post("/api/chat")
 async def chat(body: ChatIn):
     # One prompt at a time per visitor: a second one while the first is still running is turned away.
+    if not SESSION_ID_RE.fullmatch(body.session_id or ""):
+        body.session_id = None
     sid = body.session_id
     if sid and sid in inflight:
         return JSONResponse(
@@ -127,6 +141,32 @@ async def chat(body: ChatIn):
         return await _chat(body)
     finally:
         inflight.discard(sid)
+
+
+def _public(v: dict) -> dict:
+    """A verdict as sent to a visitor's browser: no raw AI Guard payload or detector details, which can echo the
+    very content that was just blocked."""
+    return {**{k: x for k, x in v.items() if k != "raw"},
+            "detectors": [{k: x for k, x in d.items() if k != "details"} for d in v.get("detectors", [])]}
+
+
+async def _stopped_by_guard(stage: str, text: str, cfg: dict, out: dict, prompt: str, user_name: str) -> bool:
+    """Scan the prompt or the response. Records the verdict in out; True means the exchange ends here."""
+    session_id = out["session_id"]
+    v = await scan(text, stage, cfg, conversation_id=session_id, user_name=user_name)
+    out[f"{stage}_verdict"] = _public(v)
+    if v["action"] == "ERROR":
+        stats["errors"] += 1
+    if not is_blocked(v, cfg):
+        return False
+    busy = v["action"] == "ERROR"  # timeout: already counted in errors
+    kind = "guard_busy" if busy else f"{stage}_blocked"
+    if not busy:
+        stats[f"{stage}_blocks"] += 1
+    out["reply"] = cfg["bot"].get("guard_busy_message") if busy else cfg["bot"][f"blocked_{stage}_message"]
+    out["stage"] = kind
+    _log(kind, session=session_id[:8], prompt=prompt[:160], detectors=v.get("triggered"), action=v["action"])
+    return True
 
 
 async def _chat(body: ChatIn):
@@ -154,18 +194,8 @@ async def _chat(body: ChatIn):
     out = {"session_id": session_id, "guard_enabled": guard, "visitor_toggle": cfg["aiguard"].get("visitor_toggle", True), "prompt_verdict": None, "response_verdict": None, "stage": "allowed", "model": None}
 
     # 1) scan prompt
-    if guard and cfg["aiguard"]["scan_prompt"]:
-        v = await scan(msg, "prompt", cfg, conversation_id=session_id, user_name=user_name)
-        out["prompt_verdict"] = v
-        if v["action"] == "ERROR":
-            stats["errors"] += 1
-        if is_blocked(v, cfg):
-            busy = v["action"] == "ERROR"  # timeout: already counted in errors
-            stats["prompt_blocks"] += 0 if busy else 1
-            out["reply"] = bot.get("guard_busy_message") if busy else bot["blocked_prompt_message"]
-            out["stage"] = "guard_busy" if busy else "prompt_blocked"
-            _log("guard_busy" if busy else "prompt_blocked", session=session_id[:8], prompt=msg[:160], detectors=v.get("triggered"), action=v["action"])
-            return out
+    if guard and cfg["aiguard"]["scan_prompt"] and await _stopped_by_guard("prompt", msg, cfg, out, msg, user_name):
+        return out
 
     # 2) LLM (skipped entirely when switched off on the admin page)
     if not cfg["llm"].get("enabled", True):
@@ -181,28 +211,17 @@ async def _chat(body: ChatIn):
         stats["errors"] += 1
         _log("llm_error", session=session_id[:8], error=str(e)[:200])
         out["reply"] = "Hmm, my brain is buffering. (LLM error, check the admin page)"
-        out["stage"] = "llm_error"
-        out["error"] = str(e)[:300]
+        out["stage"] = "llm_error"  # the error text stays in the admin feed; visitors don't get provider details
         return out
     reply = llm_res["text"]
     out["model"] = llm_res["model"]
     out["llm_latency_ms"] = llm_res["latency_ms"]
 
     # 3) scan response
-    if guard and cfg["aiguard"]["scan_response"]:
-        v = await scan(reply, "response", cfg, conversation_id=session_id, user_name=user_name)
-        out["response_verdict"] = v
-        if v["action"] == "ERROR":
-            stats["errors"] += 1
-        if is_blocked(v, cfg):
-            busy = v["action"] == "ERROR"  # timeout: already counted in errors
-            stats["response_blocks"] += 0 if busy else 1
-            out["reply"] = bot.get("guard_busy_message") if busy else bot["blocked_response_message"]
-            out["stage"] = "guard_busy" if busy else "response_blocked"
-            # keep the user turn so the conversation still flows, but not the leaked reply
-            sess["history"] += [{"role": "user", "content": msg}, {"role": "assistant", "content": "(that answer was blocked by security)"}]
-            _log("guard_busy" if busy else "response_blocked", session=session_id[:8], prompt=msg[:160], detectors=v.get("triggered"), action=v["action"])
-            return out
+    if guard and cfg["aiguard"]["scan_response"] and await _stopped_by_guard("response", reply, cfg, out, msg, user_name):
+        # keep the user turn so the conversation still flows, but not the leaked reply
+        sess["history"] += [{"role": "user", "content": msg}, {"role": "assistant", "content": "(that answer was blocked by security)"}]
+        return out
 
     stats["allowed"] += 1
     out["reply"] = reply

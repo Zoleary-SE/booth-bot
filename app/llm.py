@@ -27,7 +27,7 @@ def _apply_env(llm: dict):
     for k, v in mapping.items():
         if v:
             os.environ[k] = v
-        elif k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY") and k in os.environ and not v:
+        elif k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
             # blank in admin => fall back to the container's IAM role / instance creds
             os.environ.pop(k, None)
 

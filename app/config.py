@@ -152,14 +152,7 @@ class Config:
     def load(self) -> dict:
         with _lock:
             if self._data is None:
-                base = defaults_from_env()
-                if CONFIG_PATH.exists():
-                    try:
-                        stored = json.loads(CONFIG_PATH.read_text())
-                        base = _merge(base, stored)
-                    except Exception:
-                        pass
-                self._data = base
+                self.load_unlocked()
                 self._write(self._data)
             return deepcopy(self._data)
 

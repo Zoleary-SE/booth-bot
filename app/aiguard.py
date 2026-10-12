@@ -111,6 +111,11 @@ async def _scan_once(content: str, stage: str, cfg: dict, conversation_id: str |
         headers["X-User-Name"] = user_name
 
     t0 = time.perf_counter()
+
+    def error(message: str, raw=None) -> dict:
+        return {"action": "ERROR", "error": message, "latency_ms": int((time.perf_counter() - t0) * 1000), "direction": direction,
+                "endpoint": path, "raw": raw, "detectors": [], "triggered": [], "blocking": []}
+
     try:
         async with httpx.AsyncClient(timeout=ag.get("timeout", 15)) as client:
             r = await client.post(url, json=body, headers=headers)
@@ -120,33 +125,13 @@ async def _scan_once(content: str, stage: str, cfg: dict, conversation_id: str |
         except Exception:
             raw = {"errorMsg": r.text[:300]}
         if r.status_code >= 400:
-            return {
-                "action": "ERROR",
-                "error": f"HTTP {r.status_code}: {raw.get('errorMsg') or raw.get('message') or raw}",
-                "latency_ms": elapsed,
-                "direction": direction,
-                "endpoint": path,
-                "raw": raw,
-                "detectors": [],
-                "triggered": [],
-                "blocking": [],
-            }
+            return error(f"HTTP {r.status_code}: {raw.get('errorMsg') or raw.get('message') or raw}", raw)
         v = parse_verdict(raw)
         v["policy"] = v["policy"] or policy_id or None
         v.update({"latency_ms": elapsed, "direction": direction, "endpoint": path, "raw": raw, "user": user_name})
         return v
     except Exception as e:
-        return {
-            "action": "ERROR",
-            "error": f"{type(e).__name__}: {e}",
-            "latency_ms": int((time.perf_counter() - t0) * 1000),
-            "direction": direction,
-            "endpoint": path,
-            "raw": None,
-            "detectors": [],
-            "triggered": [],
-            "blocking": [],
-        }
+        return error(f"{type(e).__name__}: {e}")
 
 
 def is_blocked(verdict: dict, cfg: dict) -> bool:

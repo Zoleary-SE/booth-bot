@@ -10,14 +10,14 @@ async def slow_chat(body):
 main._chat = slow_chat
 
 async def run():
-    first = asyncio.create_task(main.chat(main.ChatIn(message="a", session_id="s1")))
+    first = asyncio.create_task(main.chat(main.ChatIn(message="a", session_id="session-1")))
     await asyncio.sleep(0)
-    second = await main.chat(main.ChatIn(message="b", session_id="s1"))   # same visitor, still waiting
-    other = asyncio.create_task(main.chat(main.ChatIn(message="c", session_id="s2")))  # different visitor
+    second = await main.chat(main.ChatIn(message="b", session_id="session-1"))   # same visitor, still waiting
+    other = asyncio.create_task(main.chat(main.ChatIn(message="c", session_id="session-2")))  # different visitor
     await asyncio.sleep(0)
     gate.set()
     assert second.status_code == 429
     assert (await first)["stage"] == "allowed" and (await other)["stage"] == "allowed"
     assert not main.inflight
-    assert (await main.chat(main.ChatIn(message="d", session_id="s1")))["stage"] == "allowed"  # free again
+    assert (await main.chat(main.ChatIn(message="d", session_id="session-1")))["stage"] == "allowed"  # free again
 asyncio.run(run()); print("ok")

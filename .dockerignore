@@ -1,6 +1,7 @@
+.git/
 .env
-stubs/
-test_*.py
+*.env
+.enola/
+tests/
 __pycache__/
 *.pyc
-.git/

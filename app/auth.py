@@ -32,6 +32,7 @@ LEGACY_TOTP_PATH = _DATA / "admin_totp"  # the owner's secret before there were 
 COOKIE = "admin_session"
 # Browsers only send a Secure cookie over HTTPS (or localhost). Set false for a plain-HTTP homelab.
 COOKIE_SECURE = os.getenv("ADMIN_COOKIE_SECURE", "true").strip().lower() in ("1", "true", "yes", "on")
+DEFAULT_PASSWORDS = {"", "changeme"}  # what .env.example ships with; never accepted
 SESSION_TTL = 12 * 3600
 MAX_FAILS, LOCK_SECONDS = 5, 60
 MIN_PASSWORD = 12
@@ -75,6 +76,8 @@ def _hash(password: str, salt: str) -> str:
 def _password_ok(username: str, password: str) -> bool:
     rec = _load().get(username) or {}
     if username == ADMIN_USER and not rec.get("hash"):
+        if ADMIN_PASSWORD in DEFAULT_PASSWORDS:
+            raise HTTPException(503, "the admin page is disabled until ADMIN_PASSWORD is changed from the default")
         return hmac.compare_digest(password.encode(), ADMIN_PASSWORD.encode())
     # Unknown users still cost one hash, so response time doesn't reveal which usernames exist.
     return hmac.compare_digest(_hash(password, rec.get("salt") or "00" * 16), rec.get("hash") or "")
@@ -100,7 +103,9 @@ def _code_ok(username: str, secret: str, code: str) -> bool:
 def login(username: str, password: str, code: str) -> dict:
     """{"token", "user"} on success, {"enroll": {...}} when the authenticator still has to be set up; 401/429 otherwise."""
     now = time.time()
-    username = str(username).strip().lower() if str(username).strip().lower() != ADMIN_USER.lower() else ADMIN_USER
+    username = str(username).strip().lower()
+    if username == ADMIN_USER.lower():
+        username = ADMIN_USER
     # ponytail: one global lockout, not per IP or per user (the client IP isn't trustworthy behind a CDN or proxy).
     # An attacker can keep the login locked; per-IP counters if that ever matters.
     if now < _state["locked_until"]:
