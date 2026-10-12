@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Booth admin · Sign in</title>
+<style>
+  :root{ --bg:#0b1220; --panel:#111a2e; --line:#1f2d47; --blue:#2f6fed; --text:#c8d3ea; --dim:#7688aa; --block:#e0245e; }
+  *{box-sizing:border-box}
+  body{ margin:0; min-height:100vh; display:grid; place-items:center; padding:16px; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  form{ width:100%; max-width:380px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:22px; display:grid; gap:12px;}
+  h1{ margin:0 0 4px; font-size:17px; color:#fff;} h1 span{ color:var(--blue);}
+  label{ display:block; font-size:12px; color:var(--dim); margin-bottom:4px;}
+  input{ width:100%; padding:10px 11px; background:var(--bg); border:1px solid var(--line); border-radius:8px; color:var(--text); font-family:inherit; font-size:16px;}
+  input:focus{ outline:none; border-color:var(--blue);}
+  button{ padding:10px 16px; border:none; background:var(--blue); color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;}
+  #err{ color:#ff8fab; font-size:13px; min-height:16px;}
+  #enroll{ display:none; font-size:13px; line-height:1.5; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px;}
+  #enroll img{ display:block; margin:10px auto; width:200px; height:200px; border-radius:8px;}
+  #enroll code{ display:block; margin:8px 0; font-size:15px; color:#fff; word-break:break-all; letter-spacing:1px;}
+  #enroll a{ color:var(--blue);}
+</style>
+</head>
+<body>
+<form id="f">
+  <h1><span>Zscaler</span> AI Guard · booth admin</h1>
+  <div><label for="u">Username</label><input id="u" autocomplete="username" required /></div>
+  <div><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required /></div>
+  <div id="enroll">
+    First sign-in: scan this QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…),
+    or type the key below into it. Then enter the 6-digit code the app shows. Neither is shown again once the code is accepted.
+    <img id="qr" alt="QR code to scan with your authenticator app" />
+    <code id="key"></code>
+    <a id="uri">Open in an authenticator app on this device</a>
+  </div>
+  <div><label for="c">6-digit code from your authenticator app</label><input id="c" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="leave blank the first time to set it up" /></div>
+  <div id="err" role="alert"></div>
+  <button>sign in</button>
+</form>
+<script>
+const F = id => document.getElementById(id);
+F("f").onsubmit = async e => {
+  e.preventDefault(); F("err").textContent = "";
+  try{
+    const r = await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({username:F("u").value, password:F("p").value, code:F("c").value})});
+    const d = await r.json();
+    if(r.ok && d.enroll){
+      F("key").textContent = d.enroll.secret.match(/.{1,4}/g).join(" ");
+      F("uri").href = d.enroll.uri; F("qr").src = d.enroll.qr; F("enroll").style.display = "block";
+      F("c").placeholder = "123456"; F("c").required = true; F("c").focus();
+    } else if(r.ok){ location.reload(); }
+    else { F("err").textContent = d.detail || "sign-in failed"; F("c").value = ""; }
+  }catch(e){ F("err").textContent = "network error, try again"; }
+};
+</script>
+</body>
+</html>

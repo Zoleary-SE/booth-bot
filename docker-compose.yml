@@ -1,0 +1,14 @@
+services:
+  booth-bot:
+    build: .
+    image: booth-bot:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - booth-config:/data
+    restart: unless-stopped
+
+volumes:
+  booth-config:

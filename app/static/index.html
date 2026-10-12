@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="general">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>LeakyBot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bro-1:#0d9488; --bro-2:#06b6d4; --bro-3:#a3e635;
+    --ink:#042f2e; --paper:#effdfa; --card:#fff; --sub:#0f766e; --me-bg:#042f2e; --me-fg:#fff; --decor:"";
+    --z-bg:#0a1a3a; --z-panel:#0d2150; --z-card:#132c63; --z-line:#2a4580; --z-blue:#4f8cff;
+    --z-text:#f1f5ff; --z-dim:#b4c3e6;
+    --ok:#16a34a; --block:#e0245e; --warn:#f59e0b;
+    box-sizing:border-box;
+  }
+  /* ---------- themes: picked on the admin page (keys match app/themes.py); :root above is "general" ---------- */
+  [data-theme="halloween"]{ --bro-1:#f97316; --bro-2:#a855f7; --ink:#f3e8ff; --paper:#150a24; --card:#24123b; --sub:#fdba74; --me-bg:#f97316; --me-fg:#1a0b00; --decor:"🕸️ 🎃 👻 🦇"; }
+  [data-theme="thanksgiving"]{ --bro-1:#c2410c; --bro-2:#a16207; --ink:#431407; --paper:#fff7ed; --sub:#9a3412; --me-bg:#7c2d12; --decor:"🍂 🦃 🥧 🌽"; }
+  [data-theme="spring"]{ --bro-1:#db2777; --bro-2:#16a34a; --ink:#14321f; --paper:#f6fef4; --sub:#15803d; --me-bg:#166534; --decor:"🌷 🐝 🌸 🐣"; }
+  [data-theme="summer"]{ --bro-1:#ea580c; --bro-2:#0891b2; --ink:#0c2f3a; --paper:#fffbeb; --sub:#0e7490; --me-bg:#0e7490; --decor:"🏖️ 😎 🍉 🌊"; }
+  [data-theme="july4"]{ --bro-1:#dc2626; --bro-2:#1d4ed8; --ink:#0f1e4a; --paper:#f8fafc; --sub:#1e3a8a; --me-bg:#1e3a8a; --decor:"🎆 🇺🇸 🌭 🎇"; }
+  [data-theme="winter"]{ --bro-1:#1d4ed8; --bro-2:#0ea5e9; --ink:#0c1e3d; --paper:#f0f7ff; --sub:#1e40af; --me-bg:#0c1e3d; --decor:"❄️ ⛄ 🎁 ✨"; }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    background:var(--z-bg); color:var(--z-text);
+    display:grid; grid-template-columns:1fr 380px; gap:0; height:100%; height:100dvh;
+    -webkit-text-size-adjust:100%;
+  }
+  @media (max-width:900px){ body{grid-template-columns:1fr; grid-template-rows:minmax(0,1fr) auto; overflow:hidden} }
+
+  /* ---------- BRO side (intentionally loud) ---------- */
+  .bro{ display:flex; flex-direction:column; min-width:0; background:
+     radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--bro-1) 35%, transparent), transparent 60%),
+     radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--bro-2) 30%, transparent), transparent 55%),
+     var(--paper); color:var(--ink); position:relative; overflow:hidden;}
+  .bro-head{ padding:20px 22px 12px; }
+  .bro-head::after{ content:var(--decor); position:absolute; top:24px; right:22px; font-size:26px; letter-spacing:4px;}
+  .bro-title{ font-size:34px; font-weight:700; letter-spacing:-1px;
+     background:linear-gradient(90deg,var(--bro-1),var(--bro-2)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .bro-sub{ font-size:14px; color:var(--sub); margin-top:2px;}
+  .stream{ flex:1; overflow-y:auto; padding:8px 18px 4px; display:flex; flex-direction:column; gap:12px;}
+  .row{ display:flex; }
+  .row.me{ justify-content:flex-end; }
+  .bubble{ max-width:78%; padding:12px 15px; border-radius:20px; font-size:16px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word;}
+  .me .bubble{ background:var(--me-bg); color:var(--me-fg); border-bottom-right-radius:6px;}
+  .bro-b .bubble{ background:var(--card); border:2px solid color-mix(in srgb, var(--bro-1) 25%, transparent); border-bottom-left-radius:6px; box-shadow:0 6px 18px color-mix(in srgb, var(--bro-1) 12%, transparent);}
+  .bubble.blocked{ background:#fff0f4; border-color:rgba(224,36,94,.35); color:#9f1239;}
+  .who{ font-size:11px; font-weight:700; margin:0 0 4px 4px; color:var(--bro-1);}
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; padding:0 18px 8px;}
+  .chips.busy{ opacity:.45; pointer-events:none;}
+  .chip{ font-size:13px; padding:7px 12px; border-radius:999px; border:2px solid color-mix(in srgb, var(--bro-1) 30%, transparent);
+     background:var(--card); color:var(--sub); cursor:pointer; font-family:inherit; font-weight:500;}
+  .chip:hover{ background:var(--bro-1); color:#fff; border-color:var(--bro-1);}
+  .composer{ display:flex; gap:8px; padding:12px 16px 16px; background:transparent;}
+  .composer input{ flex:1; padding:14px 16px; border-radius:16px; border:2px solid color-mix(in srgb, var(--bro-1) 30%, transparent);
+     font-family:inherit; font-size:16px; background:var(--card); color:var(--ink); min-width:0;}
+  .composer input:focus{ outline:none; border-color:var(--bro-2);}
+  .composer button{ padding:0 20px; border:none; border-radius:16px; cursor:pointer; font-weight:700; font-size:15px; color:#fff;
+     background:linear-gradient(90deg,var(--bro-1),var(--bro-2)); font-family:inherit;}
+  .composer button:disabled{ opacity:.5; }
+  .bro-foot{ text-align:center; font-size:11px; color:var(--sub); opacity:.75; padding-bottom:8px;}
+  .dots span{ display:inline-block; width:7px; height:7px; margin:0 2px; border-radius:50%; background:var(--bro-1); animation:b 1s infinite;}
+  .dots span:nth-child(2){animation-delay:.15s} .dots span:nth-child(3){animation-delay:.3s}
+  @keyframes b{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
+
+  /* ---------- Zscaler verdict side (disciplined) ---------- */
+  .z{ background:var(--z-panel); border-left:1px solid var(--z-line); display:flex; flex-direction:column; min-height:0; color:var(--z-text);}
+  @media (max-width:900px){ .z{ max-height:36vh; max-height:36dvh; border-left:none; border-top:3px solid var(--z-blue);} }
+  .z-head{ padding:16px 18px; border-bottom:1px solid var(--z-line); display:flex; align-items:center; justify-content:space-between; background:var(--z-bg);}
+  .z-brand{ font-weight:700; font-size:16px; color:#fff; letter-spacing:.2px;}
+  .z-brand b{ color:var(--z-blue);}
+  .z-mode{ font-size:12px; color:var(--z-dim);}
+  .z-guard{ display:flex; align-items:center; gap:8px; font-size:12px;}
+  /* per-visitor AI Guard switch */
+  .gsw{ display:flex; align-items:center; gap:8px; background:none; border:none; padding:4px 2px; cursor:pointer; font-family:inherit; color:#fff;}
+  .gsw-track{ position:relative; width:44px; height:24px; border-radius:999px; background:#e11d48; transition:background .2s; flex:0 0 auto;}
+  .gsw-knob{ position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .gsw.on .gsw-track{ background:#16a34a;} .gsw.on .gsw-knob{ transform:translateX(20px);}
+  .gsw-label{ font-weight:700; font-size:12px; letter-spacing:.4px; white-space:nowrap;}
+  .gsw:focus-visible{ outline:2px solid var(--z-blue); outline-offset:3px; border-radius:6px;}
+  .gsw.locked{ cursor:default;} .gsw.locked .gsw-track{ opacity:.6;}
+  /* note in the chat when a visitor flips the switch */
+  .note{ align-self:center; font-size:12px; font-weight:700; padding:6px 12px; border-radius:999px; text-align:center; max-width:92%;}
+  .note.off{ background:#fee2e2; color:#9f1239;} .note.on{ background:#dcfce7; color:#166534;}
+  .z-body{ flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:12px;}
+  /* flex-shrink:0 stops cards being squashed when the panel is short (phones) */
+  .verdict{ flex-shrink:0; background:var(--z-card); border:1px solid var(--z-line); border-left:5px solid #64748b; border-radius:10px; overflow:hidden;}
+  .verdict.s-BLOCK{ border-left-color:#f43f5e;} .verdict.s-DETECT{ border-left-color:#f59e0b;} .verdict.s-ALLOW{ border-left-color:#22c55e;}
+  .v-top{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; font-size:12px; color:var(--z-text);}
+  .v-stage{ text-transform:uppercase; letter-spacing:.6px; font-size:12px; font-weight:700;}
+  .v-action{ font-weight:700; padding:4px 11px; border-radius:6px; font-size:12px; letter-spacing:.4px;}
+  .a-BLOCK{ background:#e11d48; color:#fff;}
+  .a-ALLOW{ background:#16a34a; color:#fff;}
+  .a-DETECT{ background:#f59e0b; color:#1f1300;}
+  .a-ERROR,.a-UNKNOWN{ background:#64748b; color:#fff;}
+  .det{ border-top:1px solid var(--z-line); padding:8px 12px; font-family:"JetBrains Mono",monospace; font-size:12px; display:flex; justify-content:space-between; gap:8px;}
+  .det.hit-BLOCK{ color:#fecdd3;} .det.hit-DETECT{ color:#fde68a;} .det.none{ color:var(--z-dim);}
+  .det .sv{ color:var(--z-dim); }
+  .meta{ padding:8px 12px; font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--z-dim); border-top:1px solid var(--z-line); word-break:break-all;}
+  .z-empty{ color:var(--z-dim); font-size:13px; text-align:center; margin-top:30px; line-height:1.6;}
+  .z-foot{ padding:10px 16px; border-top:1px solid var(--z-line); font-size:11px; color:var(--z-dim); text-align:center; background:var(--z-bg);}
+  /* verdict tag under each bot reply, so the result is visible right in the chat */
+  .gtag{ display:inline-block; margin:6px 0 0 4px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; line-height:1.4;}
+  .gtag.t-BLOCK{ background:#e11d48; color:#fff;} .gtag.t-DETECT{ background:#f59e0b; color:#1f1300;}
+  .gtag.t-ALLOW{ background:#dcfce7; color:#166534;} .gtag.t-OFF{ background:#fee2e2; color:#9f1239;} .gtag.t-ERROR{ background:#e2e8f0; color:#334155;}
+
+  /* ---------- phones + tablets: one swipeable row of prompts instead of a wall of wrapped chips ---------- */
+  @media (max-width:900px){
+    .chips{ flex-wrap:nowrap; overflow-x:auto; padding:2px 12px 6px; scrollbar-width:none; -webkit-overflow-scrolling:touch;}
+    .chips::-webkit-scrollbar{ display:none;}
+    .chip{ flex:0 0 auto; white-space:nowrap; padding:9px 13px;}
+    .chip:hover{ background:var(--card); color:var(--sub); border-color:color-mix(in srgb, var(--bro-1) 30%, transparent);}
+    .chip:active{ background:var(--bro-1); color:#fff; border-color:var(--bro-1);}
+  }
+
+  /* ---------- phones ---------- */
+  @media (max-width:600px){
+    .bro-head{ padding:12px 16px 6px; padding-top:max(12px, env(safe-area-inset-top));}
+    .bro-title{ font-size:26px;}
+    .bro-head::after{ top:max(16px, env(safe-area-inset-top)); right:16px; font-size:18px; letter-spacing:2px;}
+    .bro-sub{ font-size:12px;}
+    .stream{ padding:6px 12px 4px; gap:10px;}
+    .bubble{ max-width:88%; font-size:15px; padding:10px 13px;}
+    .composer{ padding:8px 12px 10px;}
+    .composer input{ padding:12px 14px;}
+    .composer button{ padding:0 16px; min-height:46px;}
+    .bro-foot{ display:none;}
+    .z-head{ padding:10px 14px;}
+    .z-mode{ display:none;}
+    .z-body{ padding:10px 12px; gap:8px;}
+    .z-empty{ margin-top:8px; font-size:12px;}
+    .z-foot{ padding:6px 12px; padding-bottom:max(6px, env(safe-area-inset-bottom)); font-size:10px;}
+  }
+</style>
+</head>
+<body>
+  <section class="bro">
+    <div class="bro-head">
+      <div class="bro-title" id="botName">LeakyBot</div>
+      <div class="bro-sub" id="botSub">your friendly internal helper bot</div>
+    </div>
+    <div class="stream" id="stream"></div>
+    <div class="chips" id="chips"></div>
+    <div class="composer">
+      <input id="input" autocomplete="off" placeholder="ask LeakyBot something…" />
+      <button id="send">send</button>
+    </div>
+    <div class="bro-foot" id="botFoot">made by an intern who went back to school · no auth · it's fine 🗿</div>
+  </section>
+
+  <aside class="z">
+    <div class="z-head">
+      <div>
+        <div class="z-brand"><b>Zscaler</b> AI Guard</div>
+        <div class="z-mode">DAS / API mode · prompt + response inspection</div>
+      </div>
+      <div class="z-guard">
+        <button id="guardSw" class="gsw" type="button" aria-pressed="true" title="Turn AI Guard on or off for your session">
+          <span class="gsw-track"><span class="gsw-knob"></span></span>
+          <span id="guardPill" class="gsw-label">—</span>
+        </button>
+      </div>
+    </div>
+    <div class="z-body" id="zbody">
+      <div class="z-empty">Every prompt and every reply is inspected here.<br/>Try to make <span class="botn">LeakyBot</span> leak something. Watch what happens.</div>
+    </div>
+    <div class="z-foot">Verdicts are live from AI Guard · this is a demo with fictional data</div>
+  </aside>
+
+<script>
+const SID_KEY = "bro_sid";
+let BOT = "LeakyBot";
+let sessionId = sessionStorage.getItem(SID_KEY) || null;
+const stream = document.getElementById("stream");
+const zbody  = document.getElementById("zbody");
+const input  = document.getElementById("input");
+const sendBtn= document.getElementById("send");
+const guardPill = document.getElementById("guardPill");
+const guardSw = document.getElementById("guardSw");
+const GUARD_KEY = "bro_guard";      // this tab's own on/off choice
+let guardOn = true;
+let visitorToggle = true;           // admin can lock the switch
+
+// Pre-canned chips come from /api/bootstrap (admin page can switch each one off).
+let SUGGESTIONS = [];
+
+function chip(text){
+  const c = document.createElement("button");
+  c.className = "chip"; c.textContent = text;
+  c.onclick = () => { input.value = text; send(); };
+  return c;
+}
+function renderChips(){
+  const box = document.getElementById("chips"); box.innerHTML="";
+  SUGGESTIONS.forEach(s => box.appendChild(chip(s)));
+}
+
+function addBubble(text, who, blocked=false){
+  const row = document.createElement("div");
+  row.className = "row " + (who==="me" ? "me" : "bro-b");
+  const wrap = document.createElement("div");
+  if(who!=="me"){ const w=document.createElement("div"); w.className="who"; w.textContent=BOT; wrap.appendChild(w); }
+  const b = document.createElement("div");
+  b.className = "bubble" + (blocked ? " blocked":"");
+  b.textContent = who==="me" ? text : text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/ ?💀/g, "");
+  wrap.appendChild(b); row.appendChild(wrap); stream.appendChild(row);
+  stream.scrollTop = stream.scrollHeight;
+  return b;
+}
+function typing(){
+  const row=document.createElement("div"); row.className="row bro-b"; row.id="typing";
+  const b=document.createElement("div"); b.className="bubble";
+  b.innerHTML='<span class="dots"><span></span><span></span><span></span></span>';
+  row.appendChild(b); stream.appendChild(row); stream.scrollTop=stream.scrollHeight;
+}
+function stopTyping(){ const t=document.getElementById("typing"); if(t) t.remove(); }
+
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+
+// AI Guard reports action ALLOW when detectors only DETECT (monitor); show that as DETECT.
+function status(v){
+  if(!v) return null;
+  const a = v.action || "UNKNOWN";
+  if(a==="ALLOW" && v.triggered && v.triggered.length) return "DETECT";
+  return a;
+}
+const LABEL = {BLOCK:"BLOCKED", DETECT:"DETECTED", ALLOW:"ALLOWED", ERROR:"ERROR", UNKNOWN:"NO VERDICT"};
+
+function verdictCard(stage, v){
+  if(!v) return null;
+  const s = status(v);
+  const wrap=el("div","verdict s-"+s);
+  const top=el("div","v-top");
+  top.appendChild(el("span","v-stage",stage));
+  top.appendChild(el("span","v-action a-"+s, LABEL[s]||s));
+  wrap.appendChild(top);
+  if(v.timed_out && v.timed_out.length) wrap.appendChild(el("div","meta","timed out: "+v.timed_out.join(", ")));
+  else if(v.error) wrap.appendChild(el("div","meta","error: "+v.error));
+  const hits = (v.detectors||[]).filter(d=>d.triggered);
+  hits.forEach(d=>{
+    const kind = d.action==="BLOCK" ? "BLOCK" : "DETECT";
+    const row=el("div","det hit-"+kind);
+    row.appendChild(el("span",null,`${kind==="BLOCK"?"⛔":"⚠️"} ${d.name}${d.action?" ["+d.action+"]":""}`));
+    if(d.severity) row.appendChild(el("span","sv",d.severity));
+    wrap.appendChild(row);
+  });
+  if(!hits.length && !v.error){
+    const n=(v.detectors||[]).length;
+    wrap.appendChild(el("div","det none", n ? `✓ clean · ${n} detectors checked` : "✓ clean"));
+  }
+  const meta=document.createElement("div"); meta.className="meta";
+  const bits=[];
+  if(v.policy) bits.push("policy: "+v.policy);
+  if(v.user) bits.push("user: "+v.user);
+  if(v.latency_ms!=null) bits.push(v.latency_ms+"ms");
+  if(v.attempts>1) bits.push("retried ×"+(v.attempts-1));
+  if(v.transaction_id) bits.push("txn: "+String(v.transaction_id).slice(0,8));
+  if(v.endpoint) bits.push(v.endpoint.split("/").pop());
+  meta.textContent = bits.join("  ·  ");
+  wrap.appendChild(meta);
+  return wrap;
+}
+
+function showVerdicts(data){
+  // clear the empty-state on first verdict
+  if(zbody.querySelector(".z-empty")) zbody.innerHTML="";
+  const cards=[];
+  const pc = verdictCard("prompt scan", data.prompt_verdict); if(pc) cards.push(pc);
+  const rc = verdictCard("response scan", data.response_verdict); if(rc) cards.push(rc);
+  if(!cards.length && data.guard_enabled===false){
+    const e=el("div","verdict s-BLOCK");
+    const top=el("div","v-top");
+    top.appendChild(el("span","v-stage","guard off"));
+    top.appendChild(el("span","v-action a-ERROR","BYPASSED"));
+    e.appendChild(top);
+    e.appendChild(el("div","meta", visitorToggle
+      ? `AI Guard is off for your session — ${BOT} leaks freely. flip the switch above to protect it.`
+      : `AI Guard is disabled — ${BOT} leaks freely.`));
+    cards.push(e);
+  }
+  cards.forEach(c=> zbody.prepend(c));  // newest first: the response scan lands above its prompt scan
+  while(zbody.children.length>12) zbody.removeChild(zbody.lastChild);
+  zbody.scrollTop = 0;
+}
+
+// One-line verdict under the bot's reply, so visitors see the result without looking at the panel.
+function guardTag(data){
+  const pv=data.prompt_verdict, rv=data.response_verdict;
+  const names=[...new Set([...(pv&&pv.triggered)||[], ...(rv&&rv.triggered)||[]])].join(", ");
+  if(data.stage==="prompt_blocked") return ["BLOCK", `🛡️ prompt blocked by AI Guard${names?" · "+names:""}`];
+  if(data.stage==="response_blocked") return ["BLOCK", `🛡️ reply blocked by AI Guard${names?" · "+names:""}`];
+  if(data.stage==="guard_busy"){
+    const slow=[...new Set([...(pv&&pv.timed_out)||[], ...(rv&&rv.timed_out)||[]])];
+    return ["ERROR", `⏳ ${slow.length ? slow.join(", ")+" timed out" : "security check timed out"} · nothing got through · try again in a minute`];
+  }
+  if(data.stage==="llm_off") return ["ERROR", `😴 the LLM is switched off${pv?(names?" · AI Guard detected "+names:" · prompt scanned clean"):""}`];
+  if(data.guard_enabled===false) return ["OFF", "⚠️ AI Guard is off · nothing was inspected"];
+  if(names) return ["DETECT", `👀 AI Guard detected · ${names}`];
+  if([pv,rv].some(v=>v && (v.action==="ERROR"||v.action==="UNKNOWN"))) return ["ERROR", "AI Guard gave no verdict"];
+  if(pv||rv) return ["ALLOW", "✓ scanned by AI Guard · clean"];
+  return null;
+}
+
+let sending = false;  // one prompt at a time: Enter, chips and the button all wait for the reply
+function setSending(on){ sending=on; sendBtn.disabled=on; document.getElementById("chips").classList.toggle("busy",on); }
+async function send(){
+  if(sending) return;
+  const text=input.value.trim(); if(!text) return;
+  input.value=""; addBubble(text,"me"); typing(); setSending(true);
+  try{
+    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({session_id:sessionId, message:text, guard_enabled: visitorToggle ? guardOn : undefined})});
+    const data=await r.json();
+    if(data.session_id){ sessionId=data.session_id; sessionStorage.setItem(SID_KEY,sessionId); }
+    stopTyping();
+    const blocked = data.stage==="prompt_blocked"||data.stage==="response_blocked";
+    const bubble=addBubble(data.reply||"…","bro",blocked);
+    const tag=guardTag(data);
+    if(tag) bubble.parentNode.appendChild(el("div","gtag t-"+tag[0],tag[1]));
+    if(data.visitor_toggle!==undefined) setLocked(!data.visitor_toggle);
+    if(data.guard_enabled!==undefined) setGuard(data.guard_enabled);
+    showVerdicts(data);
+    // the panel can grow and shrink the chat on phones, so scroll after layout settles
+    requestAnimationFrame(()=>{ stream.scrollTop=stream.scrollHeight; });
+  }catch(e){ stopTyping(); addBubble("network died 😭 tell the booth staff","bro",true); }
+  setSending(false); input.focus();
+}
+function setGuard(on){
+  guardOn = !!on;
+  guardPill.textContent = guardOn ? "GUARD ON" : "GUARD OFF";
+  guardSw.classList.toggle("on", guardOn);
+  guardSw.setAttribute("aria-pressed", String(guardOn));
+}
+function setLocked(locked){
+  visitorToggle = !locked;
+  guardSw.classList.toggle("locked", locked);
+  guardSw.disabled = locked;
+  guardSw.title = locked ? "AI Guard is controlled by the booth staff" : "Turn AI Guard on or off for your session";
+  if(locked){ try{ sessionStorage.removeItem(GUARD_KEY); }catch(e){} }
+}
+guardSw.onclick = () => {
+  if(!visitorToggle) return;
+  setGuard(!guardOn);
+  try{ sessionStorage.setItem(GUARD_KEY, guardOn ? "1" : "0"); }catch(e){}
+  stream.appendChild(el("div", "note " + (guardOn ? "on" : "off"), guardOn
+    ? "🛡️ AI Guard is back ON for your session"
+    : `👀 AI Guard is OFF for your session — ${BOT} will leak freely`));
+  stream.scrollTop = stream.scrollHeight;
+};
+
+sendBtn.onclick=send;
+input.addEventListener("keydown",e=>{ if(e.key==="Enter") send(); });
+
+(async function init(){
+  let greeting=`hi! i'm ${BOT} 👋 ask me anything`;
+  try{
+    const b=await (await fetch("/api/bootstrap")).json();
+    SUGGESTIONS=b.suggestions||[]; renderChips();
+    BOT=b.bot_name||BOT;
+    document.getElementById("botName").textContent=BOT;
+    document.title=BOT+(b.tagline ? " — "+b.tagline : "");
+    if(b.theme) document.documentElement.dataset.theme=b.theme;
+    if(b.greeting) greeting=b.greeting;
+    if(b.foot) document.getElementById("botFoot").textContent=b.foot;
+    document.getElementById("botSub").textContent=`${b.tagline ? b.tagline+" · " : ""}${b.company ? "the "+b.company+" helper bot" : "your friendly internal helper bot"}`;
+    input.placeholder=`ask ${BOT} something…`;
+    document.querySelectorAll(".botn").forEach(el=>el.textContent=BOT);
+    input.setAttribute("maxlength", b.max_prompt_chars||1000);
+    setLocked(b.visitor_toggle===false);
+    let saved=null; try{ saved=sessionStorage.getItem(GUARD_KEY); }catch(e){}
+    setGuard(visitorToggle && saved!==null ? saved==="1" : b.guard_enabled);
+  }catch(e){}
+  addBubble(greeting,"bro");
+})();
+</script>
+</body>
+</html>

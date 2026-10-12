@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Booth admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0b1220; --panel:#111a2e; --line:#1f2d47; --blue:#2f6fed; --text:#c8d3ea; --dim:#7688aa;
+         --ok:#16a34a; --block:#e0245e; --warn:#f59e0b; }
+  *{box-sizing:border-box}
+  body{ margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  header{ padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;}
+  header b{ color:#fff; font-size:18px;} header .blue{color:var(--blue);}
+  .wrap{ max-width:960px; margin:0 auto; padding:24px; display:grid; gap:20px;}
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px;}
+  .card h2{ margin:0 0 14px; font-size:15px; color:#fff; display:flex; align-items:center; justify-content:space-between;}
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px 18px;}
+  @media(max-width:640px){ .grid{grid-template-columns:1fr} }
+  label{ display:block; font-size:12px; color:var(--dim); margin-bottom:4px;}
+  input,select{ width:100%; padding:9px 11px; background:#0b1220; border:1px solid var(--line); border-radius:8px; color:var(--text); font-family:inherit; font-size:14px;}
+  input:focus,select:focus{ outline:none; border-color:var(--blue);}
+  .row2{ grid-column:1/-1;}
+  .btn{ padding:9px 16px; border:1px solid var(--line); background:var(--blue); color:#fff; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600;}
+  .btn.ghost{ background:transparent; color:var(--text);}
+  .btn.warn{ background:var(--warn); color:#111;}
+  .btn.danger{ background:var(--block);}
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;}
+  .toggles{ display:flex; align-items:center; gap:22px; flex-wrap:wrap;}
+  .toggle{ display:flex; align-items:center; gap:10px;}
+  #llmSw:not(.on){ background:#e0245e;}
+  .sw{ width:52px; height:28px; border-radius:999px; background:#33415c; position:relative; cursor:pointer; transition:.2s;}
+  .sw.on{ background:var(--ok);}
+  .sw::after{ content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:.2s;}
+  .sw.on::after{ left:27px;}
+  .out{ font-family:"JetBrains Mono",monospace; font-size:12px; background:#0b1220; border:1px solid var(--line); border-radius:8px; padding:10px; white-space:pre-wrap; word-break:break-word; max-height:240px; overflow:auto; color:#9fb0cc;}
+  .stat{ display:flex; gap:18px; flex-wrap:wrap;}
+  .stat div b{ color:#fff; font-size:22px; display:block; font-family:"JetBrains Mono",monospace;}
+  .stat div span{ font-size:11px; color:var(--dim);}
+  .hint{ font-size:11px; color:var(--dim); margin-top:4px;}
+  .sg{ display:grid; grid-template-columns:52px 1fr auto auto auto; gap:8px 12px; align-items:center;}
+  .sg .txt{ font-size:13px; word-break:break-word;} .sg .txt.off{ color:var(--dim); text-decoration:line-through;}
+  .res{ font-family:"JetBrains Mono",monospace; font-size:11px; padding:3px 8px; border-radius:6px; background:#0b1220; border:1px solid var(--line); white-space:nowrap;}
+  .res.BLOCK{ color:#fff; background:var(--block);} .res.DETECT{ color:#111; background:var(--warn);}
+  .res.ALLOW{ color:#fff; background:#7c3aed;} .res.ERROR{ color:var(--warn);}
+  .btn.sm{ padding:4px 10px; font-size:12px;}
+  .save-msg{ font-size:12px; color:#4ade80; margin-left:10px;}
+  .adm{ display:grid; grid-template-columns:1fr auto auto auto; gap:8px 12px; align-items:center; font-size:13px;}
+  .adm .dim{ color:var(--dim);} .err{ color:#ff8fab; font-size:12px; min-height:16px; margin-top:8px;}
+</style>
+</head>
+<body>
+<header>
+  <b><span class="blue">Zscaler</span> AI Guard · booth admin</b>
+  <div class="toggles">
+    <div class="toggle"><span id="llmLabel">LLM</span><div id="llmSw" class="sw" role="switch" tabindex="0"></div></div>
+    <div class="toggle"><span id="guardLabel">Guard</span><div id="guardSw" class="sw"></div></div>
+    <button class="btn ghost sm" onclick="logout()">log out</button>
+  </div>
+</header>
+<div class="wrap">
+
+  <div class="card">
+    <h2>Live stats</h2>
+    <div class="stat" id="stat"></div>
+    <div class="actions">
+      <button class="btn ghost" onclick="loadStats()">refresh</button>
+      <button class="btn danger" onclick="resetAll()">reset sessions + stats</button>
+    </div>
+    <div class="out" id="events" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Admins <span class="save-msg" id="admSaved"></span></h2>
+    <div class="hint" style="margin:-6px 0 12px">Every admin has the same rights, including adding and removing admins. Give a new admin their username and password; their first sign-in walks them through setting up their own authenticator app. "reset 2FA" signs that admin out and makes their next sign-in set up a new authenticator (lost phone).</div>
+    <div class="adm" id="adm"></div>
+    <div class="actions" style="margin-top:12px">
+      <input id="admUser" placeholder="username" autocomplete="off" style="flex:1; min-width:140px" />
+      <input id="admPass" type="password" placeholder="password (12+ characters)" autocomplete="new-password" style="flex:1; min-width:180px" />
+      <button class="btn" onclick="addAdmin()">add admin</button>
+    </div>
+    <div class="err" id="admErr" role="alert"></div>
+    <label style="margin-top:6px">Change my password</label>
+    <div class="actions" style="margin-top:0">
+      <input id="pwCur" type="password" placeholder="current password" autocomplete="current-password" style="flex:1; min-width:140px" />
+      <input id="pwNew" type="password" placeholder="new password (12+ characters)" autocomplete="new-password" style="flex:1; min-width:180px" />
+      <button class="btn" onclick="changePassword()">change password</button>
+    </div>
+    <div class="err" id="pwErr" role="alert"></div>
+  </div>
+
+  <div class="card">
+    <h2>LLM backend <span class="save-msg" id="llmSaved"></span></h2>
+    <div class="grid">
+      <div class="row2">
+        <label>Model (LiteLLM string)</label>
+        <input id="llm_model" />
+        <div class="hint">e.g. bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0 · gpt-4o-mini · claude-haiku-4-5 · azure/&lt;deployment&gt; · ollama/llama3</div>
+      </div>
+      <div class="row2">
+        <label>Fallback models (comma-separated)</label>
+        <input id="llm_fallback_models" />
+      </div>
+      <div><label>Temperature</label><input id="llm_temperature" /></div>
+      <div><label>Max tokens</label><input id="llm_max_tokens" /></div>
+      <div><label>Timeout (s)</label><input id="llm_timeout" /></div>
+      <div><label>API base (optional / proxy / ollama)</label><input id="llm_api_base" /></div>
+      <div><label>OpenAI API key</label><input id="llm_openai_api_key" /></div>
+      <div><label>Anthropic API key</label><input id="llm_anthropic_api_key" /></div>
+      <div><label>AWS access key id (blank = IAM role)</label><input id="llm_aws_access_key_id" /></div>
+      <div><label>AWS secret access key</label><input id="llm_aws_secret_access_key" /></div>
+      <div><label>AWS region</label><input id="llm_aws_region" /></div>
+      <div><label>Azure API key</label><input id="llm_azure_api_key" /></div>
+      <div><label>Azure API base</label><input id="llm_azure_api_base" /></div>
+      <div><label>Azure API version</label><input id="llm_azure_api_version" /></div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="saveConfig('llm')">save LLM</button>
+      <button class="btn ghost" onclick="testLLM()">test LLM</button>
+    </div>
+    <div class="out" id="llmOut" style="margin-top:12px; display:none"></div>
+  </div>
+
+  <div class="card">
+    <h2>Zscaler AI Guard (DAS/API) <span class="save-msg" id="agSaved"></span></h2>
+    <div class="grid">
+      <div><label>API base</label><input id="ag_api_base" /></div>
+      <div><label>API key (DAS application key)</label><input id="ag_api_key" /></div>
+      <div class="row2">
+        <label>Policy ID (blank = resolve by key)</label>
+        <input id="ag_policy_id" />
+        <div class="hint">Leave blank to use resolve-and-execute-policy. Set an ID to use execute-policy.</div>
+      </div>
+      <div><label>Direction style</label>
+        <select id="ag_direction_style">
+          <option value="IN_OUT">IN / OUT (SDK)</option>
+          <option value="REQ_RESP">request / response (Help page)</option>
+        </select>
+      </div>
+      <div><label>Timeout (s)</label><input id="ag_timeout" /></div>
+      <div><label>Retries on timeout</label><input id="ag_retries" /><div class="hint">each retry can add ~10s</div></div>
+      <div><label>Scan prompt</label><select id="ag_scan_prompt"><option value="true">yes</option><option value="false">no</option></select></div>
+      <div><label>Scan response</label><select id="ag_scan_response"><option value="true">yes</option><option value="false">no</option></select></div>
+      <div><label>Block on DETECT (demo only)</label><select id="ag_block_on_detect"><option value="false">no (monitor)</option><option value="true">yes</option></select></div>
+      <div><label>Fail closed on error</label><select id="ag_fail_closed"><option value="false">no (show error)</option><option value="true">yes (block)</option></select></div>
+      <div><label>Visitors can toggle Guard</label><select id="ag_visitor_toggle"><option value="true">yes (switch in chat)</option><option value="false">no (locked to this setting)</option></select></div>
+    </div>
+    <div class="actions">
+      <button class="btn" onclick="saveConfig('aiguard')">save AI Guard</button>
+      <button class="btn ghost" onclick="testGuard()">test with a leaky prompt</button>
+    </div>
+    <div class="out" id="agOut" style="margin-top:12px; display:none"></div>
+  </div>
+
+  <div class="card">
+    <h2>Bot copy <span class="save-msg" id="botSaved"></span></h2>
+    <div class="grid">
+      <div class="row2">
+        <label>Theme</label>
+        <div class="actions" style="margin-top:0">
+          <select id="bot_theme" style="flex:1; min-width:200px">
+            <option value="halloween">Halloween</option>
+            <option value="thanksgiving">Thanksgiving</option>
+            <option value="winter">Winter holiday</option>
+            <option value="spring">Spring</option>
+            <option value="summer">Summer</option>
+            <option value="july4">4th of July</option>
+            <option value="general">General (no holiday)</option>
+          </select>
+          <button class="btn" onclick="applyTheme()">apply theme</button>
+        </div>
+        <div class="hint">Changes the chat page colours, the greeting and the bot's personality. It also replaces the bot name, tagline and the four canned replies below with that theme's defaults; edit them afterwards if you like.</div>
+      </div>
+      <div><label>Bot name</label><input id="bot_name" /></div>
+      <div><label>Company</label><input id="bot_company" /></div>
+      <div class="row2"><label>Tagline</label><input id="bot_tagline" /></div>
+      <div><label>Max prompt chars</label><input id="bot_max_prompt_chars" /></div>
+      <div><label>Rate limit / min</label><input id="bot_rate_limit_per_min" /></div>
+      <div class="row2"><label>Blocked-prompt message</label><input id="bot_blocked_prompt_message" /></div>
+      <div class="row2"><label>Blocked-response message</label><input id="bot_blocked_response_message" /></div>
+      <div class="row2"><label>Reply when AI Guard times out (too busy)</label><input id="bot_guard_busy_message" /></div>
+      <div class="row2"><label>Reply when the LLM is switched off</label><input id="bot_llm_off_message" /></div>
+      <div class="row2"><label>Extra persona instructions</label><input id="bot_extra_instructions" /></div>
+    </div>
+    <div class="actions"><button class="btn" onclick="saveConfig('bot')">save bot copy</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Pre-canned prompts <span class="save-msg" id="sgSaved"></span></h2>
+    <div class="hint" style="margin:-6px 0 12px">Switched-on prompts show as chips on the chat page. "test" sends the prompt through the live chat with Guard ON
+      and should end in <b>BLOCK</b> or <b>DETECT</b>; <b>ALLOW</b> means it got through, so switch it off. Tests count toward the stats.</div>
+    <div class="sg" id="sg"></div>
+    <div class="actions" style="margin-top:12px">
+      <input id="sgNew" placeholder="add a prompt…" style="flex:1; min-width:200px" />
+      <button class="btn" onclick="addSuggestion()">add</button>
+      <button class="btn ghost" onclick="testAll()">test all</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let CFG=null;
+const F = id => document.getElementById(id);
+
+// 401 = session expired or the server restarted: reloading /admin shows the sign-in page.
+async function api(path, opts){ const r=await fetch(path,opts); if(r.status===401){ location.reload(); } return r.json(); }
+async function logout(){ await fetch("/api/admin/logout",{method:"POST"}); location.reload(); }
+
+function fill(){
+  const s=(sec)=>CFG[sec];
+  // llm
+  ["model","fallback_models","temperature","max_tokens","timeout","api_base","openai_api_key","anthropic_api_key","aws_access_key_id","aws_secret_access_key","aws_region","azure_api_key","azure_api_base","azure_api_version"]
+    .forEach(k=>{ const el=F("llm_"+k); if(el){ let v=s("llm")[k]; if(Array.isArray(v)) v=v.join(", "); el.value=v??""; }});
+  // aiguard
+  ["api_base","api_key","policy_id","direction_style","timeout","retries"].forEach(k=>{ const el=F("ag_"+k); if(el) el.value=s("aiguard")[k]??""; });
+  ["scan_prompt","scan_response","block_on_detect","fail_closed","visitor_toggle"].forEach(k=>{ const el=F("ag_"+k); if(el) el.value=String(s("aiguard")[k]); });
+  // bot
+  ["name","tagline","company","max_prompt_chars","rate_limit_per_min","blocked_prompt_message","blocked_response_message","guard_busy_message","llm_off_message","extra_instructions"]
+    .forEach(k=>{ const el=F("bot_"+k); if(el) el.value=s("bot")[k]??""; });
+  F("bot_theme").value=s("bot").theme;
+  setGuard(CFG.aiguard.enabled);
+  setLlm(CFG.llm.enabled!==false);
+}
+
+function setGuard(on){ const sw=F("guardSw"); sw.className="sw"+(on?" on":""); F("guardLabel").textContent="Default Guard "+(on?"ON":"OFF"); F("guardLabel").title="What new visitors start with (and what everyone gets when visitor toggling is off)"; }
+
+function setLlm(on){ const sw=F("llmSw"); sw.className="sw"+(on?" on":""); sw.setAttribute("aria-checked",String(on)); F("llmLabel").textContent="LLM "+(on?"ON":"OFF"); F("llmLabel").title=on?"Visitors get real answers from the model":"No model calls: visitors get the 'switched off' reply (AI Guard still scans prompts)"; }
+async function toggleLlm(){ const on=!F("llmSw").classList.contains("on"); const r=await api("/api/admin/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({llm:{enabled:on}})}); CFG=r; setLlm(r.llm.enabled!==false); }
+F("llmSw").onclick=toggleLlm;
+F("llmSw").onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); toggleLlm(); } };
+
+F("guardSw").onclick=async()=>{ const on=!F("guardSw").classList.contains("on"); const r=await api("/api/admin/guard",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:on})}); setGuard(r.guard_enabled); };
+
+function collect(sec){
+  const map={
+    llm:["model","fallback_models","temperature","max_tokens","timeout","api_base","openai_api_key","anthropic_api_key","aws_access_key_id","aws_secret_access_key","aws_region","azure_api_key","azure_api_base","azure_api_version"],
+    aiguard:["api_base","api_key","policy_id","direction_style","timeout","retries","scan_prompt","scan_response","block_on_detect","fail_closed","visitor_toggle"],
+    bot:["name","tagline","company","max_prompt_chars","rate_limit_per_min","blocked_prompt_message","blocked_response_message","guard_busy_message","llm_off_message","extra_instructions"]
+  };
+  const out={}; map[sec].forEach(k=>{ const el=F(sec+"_"+k); if(el) out[k]=el.value; });
+  return {[sec]:out};
+}
+async function saveConfig(sec){
+  const r=await api("/api/admin/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collect(sec))});
+  CFG=r; fill();
+  const id={llm:"llmSaved",aiguard:"agSaved",bot:"botSaved"}[sec];
+  F(id).textContent="saved ✓"; setTimeout(()=>F(id).textContent="",2000);
+}
+async function applyTheme(){
+  const r=await api("/api/admin/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bot:{theme:F("bot_theme").value}})});
+  CFG=r; fill(); F("botSaved").textContent="theme applied ✓"; setTimeout(()=>F("botSaved").textContent="",2000);
+}
+async function testLLM(){ const o=F("llmOut"); o.style.display="block"; o.textContent="testing…";
+  const r=await api("/api/admin/test/llm",{method:"POST"}); o.textContent=JSON.stringify(r,null,2); }
+async function testGuard(){ const o=F("agOut"); o.style.display="block"; o.textContent="scanning a deliberately leaky prompt…";
+  const r=await api("/api/admin/test/aiguard",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})}); o.textContent=JSON.stringify(r,null,2); }
+
+// ---------- admins ----------
+function renderAdmins(r){
+  if(!r.admins){ F("admErr").textContent=r.detail||"that didn't work"; return false; }
+  F("admErr").textContent=""; const box=F("adm"); box.innerHTML="";
+  r.admins.forEach(a=>{
+    const name=document.createElement("div"); name.textContent=a.username+(a.username===r.me?" (you)":"")+(a.owner?" · owner":"");
+    const st=document.createElement("span"); st.className="dim"; st.textContent=a.enrolled?"2FA set up":"2FA not set up yet";
+    const rs=document.createElement("button"); rs.className="btn ghost sm"; rs.textContent="reset 2FA"; rs.disabled=!a.enrolled;
+    rs.onclick=()=>{ if(confirm(`Reset the authenticator for ${a.username}? They are signed out and set up a new one at their next sign-in.`)) admCall("/api/admin/admins/"+encodeURIComponent(a.username)+"/reset-2fa","POST"); };
+    const rm=document.createElement("button"); rm.className="btn ghost sm"; rm.textContent="remove"; rm.disabled=a.owner||a.username===r.me;
+    rm.title=a.owner?"the owner is set in the server's environment":"";
+    rm.onclick=()=>{ if(confirm(`Remove admin ${a.username}?`)) admCall("/api/admin/admins/"+encodeURIComponent(a.username),"DELETE"); };
+    box.append(name,st,rs,rm);
+  });
+  return true;
+}
+async function admCall(path, method, body){
+  const ok=renderAdmins(await api(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}));
+  if(ok && method!=="GET"){ F("admSaved").textContent="saved ✓"; setTimeout(()=>F("admSaved").textContent="",2000); }
+  return ok;
+}
+async function addAdmin(){ if(await admCall("/api/admin/admins","POST",{username:F("admUser").value,password:F("admPass").value})){ F("admUser").value=""; F("admPass").value=""; } }
+
+async function changePassword(){
+  const r=await api("/api/admin/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({current:F("pwCur").value,new:F("pwNew").value})});
+  if(!r.ok){ F("pwErr").textContent=r.detail||"that didn't work"; return; }
+  F("pwErr").textContent=""; F("pwCur").value=""; F("pwNew").value="";
+  F("admSaved").textContent="password changed ✓"; setTimeout(()=>F("admSaved").textContent="",2500);
+}
+
+// ---------- pre-canned prompts ----------
+let SG=[];
+async function saveSuggestions(){
+  const r=await api("/api/admin/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({bot:{suggestions:SG.map(({text,enabled})=>({text,enabled}))}})});
+  CFG=r; F("sgSaved").textContent="saved ✓"; setTimeout(()=>F("sgSaved").textContent="",2000);
+}
+function renderSG(){
+  const box=F("sg"); box.innerHTML="";
+  SG.forEach((x,i)=>{
+    const sw=document.createElement("div"); sw.className="sw"+(x.enabled?" on":""); sw.setAttribute("role","switch"); sw.tabIndex=0;
+    sw.setAttribute("aria-checked",String(!!x.enabled)); sw.title=x.enabled?"shown on chat page":"hidden from chat page";
+    const flip=()=>{ x.enabled=!x.enabled; renderSG(); saveSuggestions(); };
+    sw.onclick=flip; sw.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); flip(); } };
+    const t=document.createElement("div"); t.className="txt"+(x.enabled?"":" off"); t.textContent=x.text;
+    const res=document.createElement("span"); res.id="sgr"+i; res.className="res "+(x._res||""); res.textContent=x._res?(x._res+(x._why?" · "+x._why:"")):"–";
+    const tb=document.createElement("button"); tb.className="btn ghost sm"; tb.textContent="test"; tb.onclick=()=>testOne(i);
+    const rm=document.createElement("button"); rm.className="btn ghost sm"; rm.textContent="✕"; rm.title="remove";
+    rm.onclick=()=>{ if(confirm("Remove this prompt?")){ SG.splice(i,1); renderSG(); saveSuggestions(); } };
+    box.append(sw,t,res,tb,rm);
+  });
+}
+// BLOCK if either scan blocked, DETECT if any detector fired, ERROR if AI Guard failed, else ALLOW (= leaked).
+function outcome(o){
+  const vs=[o.prompt_verdict,o.response_verdict].filter(Boolean);
+  const hit=vs.flatMap(v=>v.triggered||[]);
+  if(vs.some(v=>v.action==="BLOCK")) return ["BLOCK",hit.join(", ")];
+  if(hit.length) return ["DETECT",hit.join(", ")];
+  if(vs.some(v=>v.action==="ERROR")) return ["ERROR","AI Guard timed out"];
+  return ["ALLOW",o.stage||""];
+}
+async function testOne(i){
+  const x=SG[i]; if(!x) return;
+  x._res="…"; x._why=""; renderSG();
+  for(let n=0;n<3;n++){   // AI Guard sometimes times out; retry those
+    try{
+      const o=await api("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:x.text,session_id:crypto.randomUUID(),guard_enabled:true})});
+      [x._res,x._why]=outcome(o);
+    }catch(e){ [x._res,x._why]=["ERROR",String(e)]; }
+    if(x._res!=="ERROR") break;
+  }
+  renderSG();
+}
+async function testAll(){
+  const q=SG.map((_,i)=>i);
+  await Promise.all([0,1,2].map(async()=>{ while(q.length) await testOne(q.shift()); }));
+}
+function addSuggestion(){ const v=F("sgNew").value.trim(); if(!v) return; SG.push({text:v,enabled:true}); F("sgNew").value=""; renderSG(); saveSuggestions(); }
+
+async function loadStats(){
+  const s=await api("/api/admin/stats");
+  F("stat").innerHTML=[
+    ["messages",s.messages],["prompt blocks",s.prompt_blocks],["response blocks",s.response_blocks],
+    ["allowed",s.allowed],["errors",s.errors],["sessions",s.active_sessions],["uptime",s.uptime_s+"s"]
+  ].map(([l,v])=>`<div><b>${v}</b><span>${l}</span></div>`).join("");
+  F("events").textContent=(s.events||[]).map(e=>{
+    const t=new Date(e.ts*1000).toLocaleTimeString();
+    const d=(e.detectors||[]).join(",");
+    return `${t} [${e.kind}]${e.prompt?(" \""+e.prompt+"\""):""}${d?(" -> "+d):""}`;
+  }).join("\n") || "no events yet";
+}
+async function resetAll(){ if(!confirm("Reset all sessions and stats?"))return; await api("/api/admin/reset",{method:"POST"}); loadStats(); }
+
+(async function(){ CFG=await api("/api/admin/config"); fill(); SG=(CFG.bot.suggestions||[]).map(x=>({...x})); renderSG(); admCall("/api/admin/admins","GET"); loadStats(); setInterval(loadStats,5000); })();
+</script>
+</body>
+</html>

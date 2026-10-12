@@ -1,0 +1,6 @@
+.env
+stubs/
+test_*.py
+__pycache__/
+*.pyc
+.git/
